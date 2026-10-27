@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Замын 2-р анги - Диспетчерийн хоногийн мэдээ</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    @media print {
+      .no-print { display: none !important; }
+      body { background: white; font-size: 11px; }
+      input, select, textarea { border: none !important; background: transparent !important; }
+    }
+    table, th, td { border: 1px solid #000 !important; }
+    .row-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      align-items: center;
+    }
+    .row-remove-button {
+      border: 1px solid #fecaca;
+      border-radius: 0.55rem;
+      background: #fff1f2;
+      color: #be123c;
+      padding: 0.4rem 0.7rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      transition: transform 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+    }
+    .row-remove-button:hover {
+      transform: translateY(-1px) scale(1.025);
+      background: #ffe4e6;
+      box-shadow: 0 3px 10px rgba(190, 18, 60, 0.16);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .row-remove-button { transition: none; }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-900 font-sans p-2">
+
+  <!-- Сүлжээний төлөв -->
+  <div class="no-print bg-slate-800 text-white p-3 rounded-lg mb-4 flex flex-wrap justify-between items-center shadow">
+    <div class="flex items-center space-x-3">
+      <span class="font-bold text-lg">🚂 ДИСПЕТЧЕРИЙН ХЭСЭГ</span>
+      <span id="sync-status" class="hidden bg-yellow-500 text-xs px-2 py-1 rounded text-black font-semibold">Оффлайн (Local)</span>
+      <span id="report-save-status" class="text-xs text-slate-200" aria-live="polite"></span>
+    </div>
+    <div class="flex space-x-2">
+      <button onclick="saveAndSend()" class="bg-green-600 hover:bg-green-500 text-white font-bold px-4 py-1 rounded text-sm shadow">🚀 Удирдлагад илгээх & Хадгалах</button>
+    </div>
+  </div>
+
+  <!-- ҮНДСЭН МАЯГТ -->
+  <div class="max-w-[1400px] mx-auto bg-white p-4 shadow-lg rounded">
+    
+    <!-- Толгой хэсэг -->
+    <div class="flex justify-between items-start mb-2 border-b-2 border-black pb-2">
+      <div class="flex items-center space-x-2">
+        <label class="font-bold">Огноо:</label>
+        <input type="date" id="report_date" onchange="loadReportData()" class="border px-2 py-1 rounded font-bold text-blue-700">
+      </div>
+      <div class="text-center">
+        <h1 class="text-xl font-bold uppercase tracking-wide">Замын 2-р ангийн хэсэг, цехүүдийн хоногийн ажлын мэдээ</h1>
+      </div>
+      <div class="text-right text-xs">
+        <p class="font-semibold">Санамж: Диспетчер нь хоногийн ажлын мэдээг өглөө бүр 08:00 цагт</p>
+        <p>ПЧ, ЗамПЧ, ПЧГ нарт цахимаар илгээж танилцуулж байна.</p>
+      </div>
+    </div>
+
+    <!-- ДЭЭД ХЭСЭГ (3 Блок) -->
+    <div class="grid grid-cols-12 gap-2 mb-2">
+      
+      <!-- 1. Анхаарамжтай км -->
+      <div class="col-span-3">
+        <div class="bg-gray-200 font-bold text-center py-1 border border-black text-sm">Анхаарамжтай км</div>
+        <table class="w-full text-xs text-center border-collapse">
+          <thead>
+            <tr class="bg-gray-100">
+              <th>Хэсэг</th>
+              <th colspan="2">Сар өдөр</th>
+              <th>Хурд</th>
+              <th>Байрлал</th>
+              <th>Хурд хассан шалтгаан</th>
+            </tr>
+            <tr class="text-[10px]">
+              <th></th><th>Эх</th><th>Дуус</th><th></th><th></th><th></th>
+            </tr>
+          </thead>
+          <tbody id="caution-tbody">
+            <!-- Dynamic Rows -->
+          </tbody>
+        </table>
+        <div class="row-actions no-print">
+          <button onclick="addRow('caution-tbody', 6)" class="mt-1 text-xs text-blue-600 font-bold">+ Мөр нэмэх</button>
+          <button onclick="removeLastRow('caution-tbody')" class="row-remove-button mt-1">− Мөр хасах</button>
+        </div>
+      </div>
+
+      <!-- 2. Тэргэнцрийн мэдээ & Гологдол -->
+      <div class="col-span-7">
+        <div class="bg-gray-200 font-bold text-center py-1 border border-black text-sm">Тэргэнцрийн мэдээ</div>
+        <table class="w-full text-xs text-center border-collapse">
+          <thead>
+            <tr class="bg-gray-100">
+              <th>Операторын нэр</th>
+              <th>Шалгасан км</th>
+              <th>Илэрсэн гэмтэл</th>
+              <th>Ажил удирдагч</th>
+              <th>Өнөөдөр шалгах км</th>
+              <th>Ажил удирдагч</th>
+              <th>Маргааш шалгах км</th>
+            </tr>
+          </thead>
+          <tbody id="cart-tbody">
+            <!-- Dynamic Rows -->
+          </tbody>
+        </table>
+        <div class="row-actions no-print">
+          <button onclick="addRow('cart-tbody', 7)" class="mt-1 text-xs text-blue-600 font-bold">+ Мөр нэмэх</button>
+          <button onclick="removeLastRow('cart-tbody')" class="row-remove-button mt-1">− Мөр хасах</button>
+        </div>
+
+        <!-- Гологдол зөрчил -->
+        <div class="bg-gray-200 font-bold text-center py-1 border border-black text-sm mt-2">Гологдол зөрчил</div>
+        <table class="w-full text-xs text-center border-collapse">
+          <thead>
+            <tr class="bg-gray-100">
+              <th>Хэсэг</th>
+              <th>Байршил</th>
+              <th>Зогсолт</th>
+              <th>Зөрчилийн шалтгаан</th>
+              <th>Зам шалгасан байдал</th>
+            </tr>
+          </thead>
+          <tbody id="defect-tbody">
+            <!-- Dynamic Rows -->
+          </tbody>
+        </table>
+        <div class="row-actions no-print">
+          <button onclick="addRow('defect-tbody', 5)" class="mt-1 text-xs text-blue-600 font-bold">+ Мөр нэмэх</button>
+          <button onclick="removeLastRow('defect-tbody')" class="row-remove-button mt-1">− Мөр хасах</button>
+        </div>
+      </div>
+
+      <!-- 3. Ангийн удирдлага (19 Удирдлагын байршил) -->
+      <div class="col-span-2">
+        <div class="bg-gray-200 font-bold text-center py-1 border border-black text-sm">Ангийн удирдлага (Байршил)</div>
+        <div class="max-h-[300px] overflow-y-auto border border-black">
+          <table class="w-full text-xs border-collapse">
+            <thead>
+              <tr class="bg-gray-100">
+                <th class="p-1">Албан тушаал</th>
+                <th class="p-1">Өнөөдөр</th>
+              </tr>
+            </thead>
+            <tbody id="management-status-tbody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ДУНД ХЭСЭГ -->
+    <div class="grid grid-cols-12 gap-2 mb-2">
+      <!-- Ирсэн буусан материал -->
+      <div class="col-span-7">
+        <div class="bg-gray-200 font-bold text-center py-1 border border-black text-sm">Ирсэн буусан материал</div>
+        <table class="w-full text-xs text-center border-collapse">
+          <thead>
+            <tr class="bg-gray-100">
+              <th>Хэсэг</th>
+              <th>Вагон дугаар</th>
+              <th>Ачааны нэр</th>
+              <th>Хэмжээ</th>
+              <th>Санамж</th>
+            </tr>
+          </thead>
+          <tbody id="material-tbody">
+            <!-- Dynamic Rows -->
+          </tbody>
+        </table>
+        <div class="row-actions no-print">
+          <button onclick="addRow('material-tbody', 5)" class="mt-1 text-xs text-blue-600 font-bold">+ Мөр нэмэх</button>
+          <button onclick="removeLastRow('material-tbody')" class="row-remove-button mt-1">− Мөр хасах</button>
+        </div>
+      </div>
+
+      <!-- Гармын зөрчил ба 3ТВ Мэдээ -->
+      <div class="col-span-5 grid grid-cols-12 gap-1">
+        <div class="col-span-8">
+          <div class="bg-gray-200 font-bold text-center py-1 border border-black text-sm">Гармын зөрчил</div>
+          <table class="w-full text-xs text-center border-collapse">
+            <thead>
+              <tr class="bg-gray-100">
+                <th>Гарам</th>
+                <th>Хугацаа</th>
+                <th>Зөрчил гарсан</th>
+                <th>Гаргасан зөрчил</th>
+                <th>Авсан арга</th>
+              </tr>
+            </thead>
+            <tbody id="crossing-tbody">
+              <!-- Dynamic Rows -->
+            </tbody>
+          </table>
+          <div class="row-actions no-print">
+            <button onclick="addRow('crossing-tbody', 5)" class="mt-1 text-xs text-blue-600 font-bold">+ Мөр нэмэх</button>
+            <button onclick="removeLastRow('crossing-tbody')" class="row-remove-button mt-1">− Мөр хасах</button>
+          </div>
+        </div>
+
+        <div class="col-span-4 border border-black p-1 text-xs">
+          <div class="font-bold text-center mb-1 bg-gray-100 border-b">3ТВ Мэдээ</div>
+          <div class="mb-2">
+            <label class="block font-semibold">3ТВ-472:</label>
+            <textarea id="tv472" class="w-full border h-12 p-1 text-xs"></textarea>
+          </div>
+          <div>
+            <label class="block font-semibold">3ТВ-475:</label>
+            <textarea id="tv475" class="w-full border h-12 p-1 text-xs"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ДООД ХЭСЭГ -->
+    <div class="grid grid-cols-12 gap-2">
+      <!-- Мотвозын мэдээ -->
+      <div class="col-span-6">
+        <div class="bg-gray-200 font-bold text-center py-1 border border-black text-sm">Мотвозын мэдээ</div>
+        <table class="w-full text-xs text-center border-collapse">
+          <thead>
+            <tr class="bg-gray-100">
+              <th>Мотвозын марк</th>
+              <th>Хаана ажилласан</th>
+              <th>Гүйцэтгэсэн ажил</th>
+              <th>Байгаа байрлал</th>
+            </tr>
+          </thead>
+          <tbody id="motvoz-tbody">
+            <!-- Dynamic Rows -->
+          </tbody>
+        </table>
+        <div class="row-actions no-print">
+          <button onclick="addRow('motvoz-tbody', 4)" class="mt-1 text-xs text-blue-600 font-bold">+ Мөр нэмэх</button>
+          <button onclick="removeLastRow('motvoz-tbody')" class="row-remove-button mt-1">− Мөр хасах</button>
+        </div>
+      </div>
+
+      <!-- Солигдсон ЗДЦ-ын материал -->
+      <div class="col-span-6">
+        <div class="bg-gray-200 font-bold text-center py-1 border border-black text-sm">Солигдсон ЗДЦ-ын материал</div>
+        <table class="w-full text-xs text-center border-collapse">
+          <thead>
+            <tr class="bg-gray-100">
+              <th>Хэсэг</th>
+              <th>Байршил</th>
+              <th>Материал нэр</th>
+              <th>Тоо ширхэг</th>
+              <th>Гэмтлийн ангилал</th>
+              <th>Тайлбар</th>
+            </tr>
+          </thead>
+          <tbody id="zdts-tbody">
+            <!-- Dynamic Rows -->
+          </tbody>
+        </table>
+        <div class="row-actions no-print">
+          <button onclick="addRow('zdts-tbody', 6)" class="mt-1 text-xs text-blue-600 font-bold">+ Мөр нэмэх</button>
+          <button onclick="removeLastRow('zdts-tbody')" class="row-remove-button mt-1">− Мөр хасах</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Удирдлагаас ирсэн сэтгэгдэл / зааварчилгаа -->
+    <div class="mt-4 border-t-2 border-black pt-2 bg-yellow-50 p-3 rounded">
+      <h3 class="font-bold text-sm text-amber-900">💬 Удирдлагуудаас ирсэн сэтгэгдэл, зааварчилгаа:</h3>
+      <div id="comments-list" class="text-xs space-y-1 mt-1 text-gray-800">
+        <p class="italic text-gray-500">Сэтгэгдэл ирээгүй байна.</p>
+      </div>
+    </div>
+
+    <div class="mt-3 border-t border-black pt-2 text-sm">
+      <span class="font-bold">Хоногийн мэдээтэй танилцсан:</span>
+      <span id="approval-statuses" class="inline-flex flex-wrap gap-2 ml-1">
+        <span data-approval-role="pch" class="px-2 py-0.5 rounded bg-gray-200 text-gray-600">ПЧ Д.Алтангэрэл</span>
+        <span data-approval-role="zampch" class="px-2 py-0.5 rounded bg-gray-200 text-gray-600">ЗамПЧ О.Батхүү</span>
+        <span data-approval-role="zampchu" class="px-2 py-0.5 rounded bg-gray-200 text-gray-600">ЗамПЧу Одгэрэл</span>
+        <span data-approval-role="pchg" class="px-2 py-0.5 rounded bg-gray-200 text-gray-600">ПЧГ Б.Ганбаяр</span>
+      </span>
+    </div>
+
+    <div class="mt-2 border-t border-black pt-2 flex items-center gap-2 text-sm">
+      <label for="dispatcher-name" class="font-bold whitespace-nowrap">Хоногийн мэдээ нэгтгэсэн ПЧД:</label>
+      <input id="dispatcher-name" type="text" maxlength="120" placeholder="Нэр бичих..." autocomplete="name"
+        class="border-b border-black px-2 py-1 text-sm flex-grow focus:outline-none focus:border-blue-600">
+    </div>
+
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://qzbftqfeugsgpglnwtlp.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_iGBuAfDa_YKLvPVAZMOLuQ_d5d-dfj0';
+
+    const MANAGEMENT_ROLES = [
+      { code: 'pch', name: 'ПЧ' },
+      { code: 'zampch', name: 'ЗамПЧ' },
+      { code: 'zampchu', name: 'ЗамПЧу' },
+      { code: 'pchg', name: 'ПЧГ' },
+      { code: 'pchis', name: 'ПЧИС' },
+      { code: 'pchi-1', name: 'ПЧИ-1' },
+      { code: 'pchi-2', name: 'ПЧИ-2' },
+      { code: 'pchi-3', name: 'ПЧИ-3' },
+      { code: 'pchi-4', name: 'ПЧИ-4' },
+      { code: 'pchi-5', name: 'ПЧИ-5' },
+      { code: 'pcht-1', name: 'ПЧТ-1' },
+      { code: 'pcht-2', name: 'ПЧТ-2' },
+      { code: 'pchiisco', name: 'ПЧИИССО' },
+      { code: 'pds-1', name: 'ПДС-1' },
+      { code: 'pds-2', name: 'ПДС-2' },
+      { code: 'pds-3', name: 'ПДС-3' },
+      { code: 'pds-4', name: 'ПДС-4' },
+      { code: 'pchk', name: 'ПЧОК' },
+      { code: 'pchf', name: 'ПЧФ' },
+      { code: 'pche', name: 'ПЧЭ' }
+    ];
+    const LOCATION_OPTIONS = ['Контор', 'Урд замд', 'Хойд замд', 'Ээлжийн амралт', 'Сургалт', 'Зам шалгалт', 'Үзлэг дагалдах', 'Салбар зам', 'Томилолт'];
+    const MOTVOZ_MARKS = ['ДГКу-3501', 'ДГКу-52-51', 'ДГКу-23-35', 'ДГКу-1269', 'АГМу-12755'];
+
+    // Хүснэгт бүрийн баганы тоог ЗӨВХӨН энд тодорхойлно (өмнө нь zdts 7 гэж буруу байсан)
+    const TABLES = [
+      { id: 'caution-tbody',  key: 'caution',  cols: 6 },
+      { id: 'cart-tbody',     key: 'cart',     cols: 7 },
+      { id: 'defect-tbody',   key: 'defect',   cols: 5 },
+      { id: 'material-tbody', key: 'material', cols: 5 },
+      { id: 'crossing-tbody', key: 'crossing', cols: 5 },
+      { id: 'motvoz-tbody',   key: 'motvoz',   cols: 4 },
+      { id: 'zdts-tbody',     key: 'zdts',     cols: 6 }
+    ];
+
+    let supabaseClient = null;
+    let reportLoadRequest = 0;
+
+    // ---------- Туслах функцууд ----------
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // toISOString() нь UTC огноо өгдөг тул Монголд 08:00-оос өмнө өчигдрийн огноо гарч байсан.
+    function todayLocal() {
+      const d = new Date();
+      const p = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    }
+
+    function setSyncStatus(text, cls) {
+      const el = document.getElementById('sync-status');
+      el.innerText = text;
+      el.className = `${cls} text-xs px-2 py-1 rounded font-semibold`;
+    }
+
+    function setReportSaveStatus(message, colorClass) {
+      const status = document.getElementById('report-save-status');
+      status.textContent = message;
+      status.className = `text-xs ${colorClass}`;
+    }
+
+    function safeLocalSet(key, value) {
+      try { localStorage.setItem(key, value); } catch (e) { console.warn('localStorage ашиглах боломжгүй', e); }
+    }
+    function safeLocalGet(key) {
+      try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+
+    // ---------- Эхлүүлэх ----------
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('report_date').value = todayLocal();
+      try {
+        initSupabase();
+      } catch (error) {
+        console.error('Supabase холболт эхлүүлэхэд алдаа гарлаа:', error);
+        setSyncStatus('Supabase холболтын алдаа', 'bg-red-500 text-white');
+      }
+      initDefaultTables();
+      loadReportData();
+      // Удирдлагын сэтгэгдлийг 10 секунд тутам шинэчилнэ (маягтыг дарахгүй)
+      setInterval(refreshFeedback, 10000);
+    });
+
+    function initSupabase() {
+      if (!window.supabase?.createClient) {
+        throw new Error('Supabase SDK ачаалагдсангүй.');
+      }
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      setSyncStatus('Онлайн (Supabase)', 'bg-green-500 text-white');
+    }
+
+    function initDefaultTables() {
+      TABLES.forEach(t => fillTableData(t.id, [], t.cols));
+      document.getElementById('tv472').value = '';
+      document.getElementById('tv475').value = '';
+      renderManagementStatusTable({});
+      renderComments([]);
+      renderApprovalStatuses([]);
+    }
+
+    // ---------- Хүснэгтийн мөр ----------
+    function resizeTableTextarea(textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    }
+
+    function makeRow(cols, values = []) {
+      const tr = document.createElement('tr');
+      const n = Math.max(cols, values.length);
+      for (let i = 0; i < n; i++) {
+        const td = document.createElement('td');
+        const textarea = document.createElement('textarea');
+        textarea.rows = 1;
+        textarea.className = 'w-full min-h-[1.75rem] resize-none overflow-hidden text-center text-xs p-1 focus:bg-blue-50 border-none outline-none';
+        textarea.value = values[i] ?? '';
+        textarea.addEventListener('input', () => resizeTableTextarea(textarea));
+        td.appendChild(textarea);
+        requestAnimationFrame(() => resizeTableTextarea(textarea));
+        tr.appendChild(td);
+      }
+      return tr;
+    }
+
+    function addRow(tbodyId, cols) {
+      document.getElementById(tbodyId).appendChild(makeRow(cols));
+    }
+
+    function removeLastRow(tbodyId) {
+      const tbody = document.getElementById(tbodyId);
+      const row = tbody.lastElementChild;
+      if (!row) {
+        alert('Хасах мөр алга байна.');
+        return;
+      }
+      const hasData = [...row.querySelectorAll('textarea')].some(textarea => textarea.value.trim() !== '');
+      if (hasData && !confirm('Энэ хүснэгтийн хамгийн сүүлийн мөрийг хасах уу?')) return;
+      row.remove();
+    }
+
+    function fillTableData(tbodyId, rowsData, defaultCols) {
+      const tbody = document.getElementById(tbodyId);
+      tbody.innerHTML = '';
+      if (tbodyId === 'motvoz-tbody') {
+        const rows = Array.isArray(rowsData) ? rowsData : [];
+        const rowCount = Math.max(MOTVOZ_MARKS.length, rows.length);
+        for (let i = 0; i < rowCount; i++) {
+          const rowData = Array.isArray(rows[i]) ? [...rows[i]] : [];
+          if (i < MOTVOZ_MARKS.length && !String(rowData[0] ?? '').trim()) {
+            rowData[0] = MOTVOZ_MARKS[i];
+          }
+          tbody.appendChild(makeRow(defaultCols, rowData));
+        }
+        return;
+      }
+      if (!Array.isArray(rowsData) || rowsData.length === 0) {
+        for (let i = 0; i < 3; i++) tbody.appendChild(makeRow(defaultCols));
+        return;
+      }
+      rowsData.forEach(rowData => tbody.appendChild(makeRow(defaultCols, Array.isArray(rowData) ? rowData : [])));
+    }
+
+    // ---------- Удирдлагын байршил ----------
+    function renderManagementStatusTable(locations = {}) {
+      const tbody = document.getElementById('management-status-tbody');
+      tbody.innerHTML = '';
+
+      MANAGEMENT_ROLES.forEach(role => {
+        const tr = document.createElement('tr');
+        const locVal = locations[role.code] || 'Контор';
+        const optionsHtml = LOCATION_OPTIONS.map(opt =>
+          `<option value="${esc(opt)}" ${locVal === opt ? 'selected' : ''}>${esc(opt)}</option>`).join('');
+
+        tr.innerHTML = `
+          <td class="p-1 font-medium text-[11px]">${esc(role.name)}</td>
+          <td class="p-1">
+            <select data-role="${esc(role.code)}" class="role-loc-select w-full border text-[10px] rounded p-0.5">
+              ${optionsHtml}
+            </select>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ---------- Сэтгэгдэл ----------
+    function renderComments(comments = []) {
+      const box = document.getElementById('comments-list');
+      if (!comments.length) {
+        box.innerHTML = '<p class="italic text-gray-500">Сэтгэгдэл ирээгүй байна.</p>';
+        return;
+      }
+      box.innerHTML = comments.map(c => {
+        const role = MANAGEMENT_ROLES.find(r => r.code === c.role_code);
+        const time = c.created_at ? new Date(c.created_at).toLocaleString() : '';
+        return `<div class="p-1 bg-white border rounded shadow-sm">
+          <span class="font-bold text-blue-700">${esc(role ? role.name : c.role_code)}:</span> ${esc(c.comment)}
+          <span class="text-[10px] text-gray-400 block">${esc(time)}</span>
+        </div>`;
+      }).join('');
+    }
+
+    // ---------- Supabase-ээс унших ----------
+    function renderApprovalStatuses(signatures = []) {
+      ['pch', 'zampch', 'zampchu', 'pchg'].forEach(roleCode => {
+        const badge = document.querySelector(`[data-approval-role="${roleCode}"]`);
+        const signed = signatures.some(signature => signature.role_code === roleCode && signature.status === 'signed');
+        badge.className = `px-2 py-0.5 rounded font-semibold ${signed ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'}`;
+      });
+    }
+
+    async function fetchFeedback(reportDate) {
+      const out = { signatures: [], comments: [], signaturesWarning: false, commentsWarning: false };
+      const [sigRes, comRes] = await Promise.all([
+        supabaseClient
+          .from('report_signatures')
+          .select('role_code,status')
+          .eq('report_date', reportDate),
+        supabaseClient
+          .from('report_comments')
+          .select('*')
+          .eq('report_date', reportDate)
+          .order('created_at', { ascending: true })
+      ]);
+      if (sigRes.error) { console.error('Танилцсан төлөв татахад алдаа:', sigRes.error); out.signaturesWarning = true; }
+      else out.signatures = sigRes.data || [];
+      if (comRes.error) { console.error('Сэтгэгдэл татахад алдаа:', comRes.error); out.commentsWarning = true; }
+      else out.comments = comRes.data || [];
+      return out;
+    }
+
+    async function refreshFeedback() {
+      if (!supabaseClient) return;
+      const reportDate = document.getElementById('report_date').value;
+      try {
+        const fb = await fetchFeedback(reportDate);
+        if (reportDate !== document.getElementById('report_date').value) return;
+        if (!fb.signaturesWarning) renderApprovalStatuses(fb.signatures);
+        if (!fb.commentsWarning) renderComments(fb.comments);
+      } catch (e) {
+        console.error('Шинэчлэхэд алдаа:', e);
+      }
+    }
+
+    async function loadReportData() {
+      const reportDate = document.getElementById('report_date').value;
+      const requestId = ++reportLoadRequest;
+      let data = null;
+      let feedback = { signatures: [], comments: [], signaturesWarning: false, commentsWarning: false };
+
+      try {
+        if (supabaseClient) {
+          const { data: rep, error: reportError } = await supabaseClient
+            .from('daily_reports')
+            .select('data')
+            .eq('report_date', reportDate)
+            .maybeSingle();
+          if (reportError) throw reportError;
+          if (rep) data = rep.data;
+          feedback = await fetchFeedback(reportDate);
+        }
+
+        if (!data) {
+          const local = safeLocalGet(`report_${reportDate}`);
+          if (local) data = JSON.parse(local);
+        }
+      } catch (error) {
+        console.error('Тайлан татахад алдаа гарлаа:', error);
+        if (requestId === reportLoadRequest) {
+          setReportSaveStatus(`Cloud-оос уншиж чадсангүй: ${error.message}`, 'text-red-300');
+        }
+        return;
+      }
+
+      if (requestId !== reportLoadRequest) return;
+
+      if (data) {
+        TABLES.forEach(t => fillTableData(t.id, data[t.key] || [], t.cols));
+        document.getElementById('tv472').value = data.tv472 || '';
+        document.getElementById('tv475').value = data.tv475 || '';
+        document.getElementById('dispatcher-name').value = data.dispatcherName || '';
+        renderManagementStatusTable(data.locations || {});
+      } else {
+        initDefaultTables();
+        document.getElementById('dispatcher-name').value = '';
+      }
+      renderComments(feedback.comments);
+      if (!feedback.signaturesWarning) renderApprovalStatuses(feedback.signatures);
+
+      setReportSaveStatus(
+        feedback.signaturesWarning || feedback.commentsWarning
+          ? 'Тайлан ачаалагдлаа, харин танилцсан төлөв эсвэл сэтгэгдэл татагдсангүй.'
+          : (data ? 'Тайлан ачаалагдлаа.' : 'Энэ өдөр тайлан алга.'),
+        feedback.signaturesWarning || feedback.commentsWarning
+          ? 'text-amber-300'
+          : (data ? 'text-green-300' : 'text-amber-300')
+      );
+    }
+
+    // ---------- Маягтын мэдээлэл цуглуулах / илгээх ----------
+    function collectFormData() {
+      const getTableData = (tbodyId) => {
+        const rows = [];
+        document.querySelectorAll(`#${tbodyId} tr`).forEach(tr => {
+          const row = [];
+          tr.querySelectorAll('textarea').forEach(textarea => row.push(textarea.value));
+          if (row.some(val => val.trim() !== '')) rows.push(row);
+        });
+        return rows;
+      };
+
+      const locations = {};
+      document.querySelectorAll('.role-loc-select').forEach(sel => {
+        locations[sel.dataset.role] = sel.value;
+      });
+
+      const result = {
+        tv472: document.getElementById('tv472').value,
+        tv475: document.getElementById('tv475').value,
+        dispatcherName: document.getElementById('dispatcher-name').value.trim(),
+        locations
+      };
+      TABLES.forEach(t => { result[t.key] = getTableData(t.id); });
+      return result;
+    }
+
+    async function saveAndSend() {
+      const reportDate = document.getElementById('report_date').value;
+      const sendButton = document.querySelector('button[onclick="saveAndSend()"]');
+      const formData = collectFormData();
+      const submittedAt = new Date().toISOString();
+      formData.submittedAt = submittedAt;
+
+      safeLocalSet(`report_${reportDate}`, JSON.stringify(formData));
+      sendButton.disabled = true;
+      setReportSaveStatus('Supabase руу илгээж байна...', 'text-amber-300');
+
+      try {
+        if (!supabaseClient) {
+          throw new Error('Supabase холболт эхлээгүй. Хуудсыг дахин ачаална уу.');
+        }
+
+        const { error } = await supabaseClient
+          .from('daily_reports')
+          .upsert(
+            { report_date: reportDate, data: formData, updated_at: submittedAt },
+            { onConflict: 'report_date' }
+          );
+        if (error) throw error;
+
+        setReportSaveStatus('Амжилттай илгээгдлээ — удирдлагын хуудсанд 10 секундийн дотор харагдана.', 'text-green-300');
+        refreshFeedback();
+      } catch (error) {
+        console.error('Тайлан Supabase руу илгээхэд алдаа гарлаа:', error);
+        setReportSaveStatus(`Илгээж чадсангүй; энэ төхөөрөмжид локалаар хадгаллаа. ${error.message}`, 'text-red-300');
+        alert(`Supabase руу илгээж чадсангүй.\n${error.message}\n\nМэдээлэл энэ төхөөрөмжид локалаар хадгалагдсан.`);
+      } finally {
+        sendButton.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
