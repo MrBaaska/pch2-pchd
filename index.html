@@ -296,6 +296,7 @@
         <span data-approval-role="zampch" class="px-2 py-0.5 rounded bg-gray-200 text-gray-600">ЗамПЧ О.Батхүү</span>
         <span data-approval-role="zampchu" class="px-2 py-0.5 rounded bg-gray-200 text-gray-600">ЗамПЧу Д.Одгэрэл</span>
         <span data-approval-role="pchg" class="px-2 py-0.5 rounded bg-gray-200 text-gray-600">ПЧГ Б.Ганбаяр</span>
+        <span data-approval-role="pchis" class="px-2 py-0.5 rounded bg-gray-200 text-gray-600">ПЧИС Ц.Шинэгэрэл</span>
       </span>
     </div>
 
@@ -517,10 +518,12 @@
 
     // ---------- Supabase-ээс унших ----------
     function renderApprovalStatuses(signatures = []) {
-      ['pch', 'zampch', 'zampchu', 'pchg'].forEach(roleCode => {
-        const badge = document.querySelector(`[data-approval-role="${roleCode}"]`);
+      ['pch', 'zampch', 'zampchu', 'pchg', 'pchis'].forEach(roleCode => {
+        const badges = document.querySelectorAll(`[data-approval-role="${roleCode}"]`);
         const signed = signatures.some(signature => signature.role_code === roleCode && signature.status === 'signed');
-        badge.className = `px-2 py-0.5 rounded font-semibold ${signed ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'}`;
+        badges.forEach(badge => {
+          badge.className = `px-2 py-0.5 rounded font-semibold ${signed ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'}`;
+        });
       });
     }
 
